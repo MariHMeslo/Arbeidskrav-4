@@ -1,0 +1,234 @@
+---
+title: "Arbeidskrav 4 del 2"
+output: html_document
+---
+
+```{r laste ned datapaker, message=FALSE, warning=FALSE, include=FALSE}
+
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(emmeans)
+library(pbkrtest)
+library(kableExtra)
+library(cowplot)
+library(lmerTest)
+library(broom)
+library(knitr)
+library(tidyr)
+
+```
+
+```{r lagre datasettet i en variabel og velge rekkefølge på tidspunkt, message=FALSE, warning=FALSE, include=FALSE}
+
+isom.data <- read_csv("./data/strengthTests.csv") %>% 
+  filter(exercise == "isom") %>%
+  # fix the order of timepoint factor
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1","post"))) 
+
+```
+
+```{r plotte dataen, message=FALSE, warning=FALSE, include=FALSE}
+isom.data %>%
+  ggplot(aes(timepoint, load, group = subject, color = group)) + geom_line() +
+  theme_minimal()
+```
+
+```{r lage et boksplott, message=FALSE, warning=FALSE, include=FALSE}
+isom.data %>%
+  # build the plot, each participant (subject) will get a line, group = subject
+  # will take care of this. Each group will get it's own color, color = group
+  # will take care of that.
+  ggplot(aes(timepoint, load, group = subject, color = group)) + 
+  geom_line() +
+  # remove grouping from boxplots to plot group averages
+  geom_boxplot(aes(group = NULL), width = 0.5) +
+  theme_minimal()
+```
+
+```{r lage en mixed model, message=FALSE, warning=FALSE, include=FALSE}
+
+lmer3 <- lmer(load ~ timepoint * group + (1|subject), data = isom.data)
+
+summary(lmer3)
+
+```
+
+```{r lage en residual plot, message=FALSE, warning=FALSE, include=FALSE}
+plot(lmer3)
+```
+
+```{r plotte gjennomsnittet i hver gruppe ved hvert tidspunkt, message=FALSE, warning=FALSE, include=FALSE}
+
+est1 <- emmeans(lmer3, specs = ~ timepoint|group)
+
+est1 %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group)) + geom_line() +
+  theme_minimal()
+
+```
+
+```{r inkludere konfidensintervaller i plottet, message=FALSE, warning=FALSE, include=FALSE}
+
+est1 %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group)) + 
+  
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), 
+                position = position_dodge(width = 0.2), 
+                width = 0.1) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  
+  theme_minimal()
+
+```
+
+
+
+```{r kombinere rawdataen og gjennomsnittet i en plott, message=FALSE, warning=FALSE, echo=FALSE}
+est1 %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group) ) + 
+  
+  # Adds raw data
+  geom_line(data = isom.data, aes(timepoint, load, group = subject, color = group), 
+            # Add transparency to individual lines
+            alpha = 0.4) +
+  
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), 
+                position = position_dodge(width = 0.2), 
+                width = 0.1) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  theme_minimal()
+```
+
+
+```{r lagre konfidensintervallene, message=FALSE, warning=FALSE, include=FALSE}
+conf_intervals2 <- confint(lmer3)
+```
+
+```{r lagre regresjonskoeffisentene, og kombinere de med konfidensintervallene, message=FALSE, warning=FALSE, include=FALSE}
+coefs2 <- summary(lmer3)$coef
+
+coef_summary2 <- cbind(coefs2, data.frame(conf_intervals2)[3:8, ])
+
+```
+
+
+```{r lagre regresjonskoeffisentene og konfidensintervallene i en fin tabell, echo=FALSE}
+
+coef_summary2 %>%
+  kable(col.names = c("Estimate", "Std. error", "DF", "t-verdi", "p-verdi", "CI 2,5%", "CI 97,5%"),
+        digits = c(1, 2, 1, 2, 3, 1, 1)) %>%
+  kable_classic()
+```
+
+```{r}
+qqnorm(resid(lmer3)); qqline(resid(lmer3))
+```
+
+```{r}
+
+coef_summary2 %>%
+  mutate(coef = rownames(.)) %>%
+  # Filter only the interaction variables
+  filter(coef %in% c("timepointsession1:groupsingle", "timepointpost:groupsingle")) %>%
+  # Make a "timepoint" variable to represent the "dat" data set.
+  mutate(timepoint = gsub("timepoint", "", coef), 
+         timepoint = gsub(":groupsingle", "", timepoint)) %>%
+  # Adds a row so that timepoint = "pre" is represented
+  add_row(timepoint = "pre", coef = "pre") %>%
+  # Fix order of the time variable
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+  
+  # Create the plot
+  ggplot(aes(timepoint, Estimate)) + 
+  
+  
+  # Add a line indicating zero geom_hline (horizontal line)
+  geom_hline(yintercept = 0, lty = 2) +
+  
+  geom_errorbar(aes(ymin = X2.5.., ymax = X97.5..), width = 0.1) +
+  geom_point(shape = 24, size = 3, fill = "white") +
+  theme_minimal()
+
+```
+
+```{r}
+fig2a <- est1 %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group) ) + 
+  
+  # Adds raw data
+  geom_line(data = isom.data, aes(timepoint, load, group = subject, color = group), 
+            # Add transparency to individual lines
+            alpha = 0.4) +
+  
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), 
+                position = position_dodge(width = 0.2), 
+                width = 0.1) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  theme_minimal() +
+  
+  # Changing axis titles and title in the legend
+  labs(y = "Isom", 
+       color = "Gruppe") + 
+  
+  # Removing text and indicators on the x-axis as these can be represented in the 
+  # other plot
+  theme(axis.text.x = element_blank(), 
+        axis.title.x = element_blank())
+  
+# Figure B: Differences between groups (interaction terms with 95% CI)
+
+fig2b <- coef_summary2 %>%
+  mutate(coef = rownames(.)) %>%
+  # Filter only the interaction variables
+  filter(coef %in% c("timepointsession1:groupsingle", "timepointpost:groupsingle")) %>%
+  # Make a "timepoint" variable to represent the "dat" data set.
+  mutate(timepoint = gsub("timepoint", "", coef), 
+         timepoint = gsub(":groupsingle", "", timepoint)) %>%
+  # Adds a row so that timepoint = "pre" is represented
+  add_row(timepoint = "pre", coef = "pre") %>%
+  # Fix order of the time variable
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+  
+  # Create the plot
+  ggplot(aes(timepoint, Estimate)) + 
+  
+  
+  # Add a line indicating zero geom_hline (horizontal line)
+  geom_hline(yintercept = 0, lty = 2) +
+  
+  geom_errorbar(aes(ymin = X2.5.., ymax = X97.5..), width = 0.1) +
+  geom_point(shape = 24, size = 3, fill = "white") +
+  theme_minimal() + 
+  
+    # Changing axis titles and title in the legend
+  labs(y = "xxxx", 
+       color = "Gruppe") 
+  
+# Using cowplot to plot both figures in 1
+library(cowplot)
+
+# Plot grid using figA and figB
+plot_grid(fig2a, fig2b, ncol = 1, 
+          # Align vertically so that the x axis matches
+          align = "v", 
+          # Set alignment so that axis align both on the left (l) and right (r)
+          # axis
+          axis = "lr")
+```
+

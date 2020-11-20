@@ -1,0 +1,462 @@
+---
+title: "Arbeidskrav 4"
+output: html_document
+bibliography: biblio.bib
+author: Mari Hårstad Meslo
+---
+
+$~$
+
+## Del 1
+
+### Bakgrunn
+
+Bakgrunnen for del 1 i denne oppgaven er å se hva som er den anbefalte intensiteten for å utvikle styrke, altså for å øke 1RM. Dataene i datasettet ser på forskjellen mellom trening med 10RM og 30RM.
+
+_Hypotese_: 10RM-gruppa har større økning i 1RM enn 30RM-gruppa. 
+
+$~$
+
+
+### Metode 
+
+#### Studiedesign
+
+Denne studien er en randomisert studie utført med to eksperimentelle grupper som undersøkte om effekten av trening med 10RM eller 30RM øker 1RM. Skriftlig informert samtykke ble innhentet fra alle deltakerne. 
+
+$~$
+
+#### Forsøkspersoner
+
+Forsøkspersonene i denne studien bestod av 31 kvinner i alderen 30-45 år, hvor alle var tidligere styrkeløftere som har konkurrert på internasjonalt nivå. Forsøkspersonene ble randomisert i to grupper; den ene gruppa trente 3 sett x 10 repetisjoner maksimum (RM), den andre gruppa trente 3 sett x 30RM. Av de 31 forsøkspersonene som deltok ved oppstart av studien, var det 24 deltakere som fullførte hele treningsintervensjonen. 
+
+$~$
+
+#### Trening og testing
+
+Treningsintervensjonen varte i 10 uker, med pretest i forkant, hvor 1RM i beinpress, bicepscurl og benkpress ble testet. Forsøkspersonene trente et helkroppsprogram, med 3 økter per uke, og intensitet etter hvilken gruppe de tilhørte (3x10RM/3x30RM). Etter 5 uker ble det uført en mid-test, og etter fullført intervensjonsperiode ble det utført en posttest hvor de samme øvelsene i pretest ble testet. I denne statistiske rapporten vil vi kun se på dataen fra legpress-testene. 
+
+$~$
+
+#### Dataanalyse
+
+De statistiske dataene ble analysert med R og R-studio, og signifikansnivået ble satt til p<0.05. Dataen ble brukt til å lage en mixed model. Mixed model ble brukt på grunn av at studien var randomisert, og denne modellen sammenligner dataen til hver forsøksperson fra sitt utgangspunkt (intercept). Mixed model sammenligner de to gruppene (RM30 og RM10) og estimerer økning av motstand (kg) over de tre testtidspunktene. Videre ble dataen fra mixed model brukt til å fremstille forskjellene mellom gruppene grafisk.
+
+$~$
+
+### Resultater
+
+Resultatene i tabell 1 viser gjennomsnittlige estimater for de to ulike gruppene ved de tre testtidspunktene. Estimatet for _(Intercept)_ i tabellen representerer det gjennomsnittlige resultatet ved pretest for 30RM-gruppa (281,5 kg). Estimatet for _timepointmid_ viser hvor mye 30RM-gruppa har økt fra pre- til midtest (35,0 kg), mens _timepointpost_ viser hvor mye gruppa har økt fra pre- til posttest (38,9 kg). Estimatet for _groupRM10_ viser forskjellen mellom 10RM-gruppa og 30RM-gruppa ved pretest (-7,6 kg). _timepointmid;groupRM10_ viser hvor mye 10RM-gruppa har økt i forhold til 30RM-gruppa fra pre- til midtest (11,1 kg), og _timepointpost:groupRM10_ viser hvor mye gruppa har økt i forhold til 30RM-gruppa fra pre- til posttest (38,6 kg).  
+
+Konfidensintervallet for variabelen _timepointpost:groupRM10_ viser at det er en signifikant økning i styrke mellom 10RM-gruppa og 30RM-gruppa fra pre- til posttest, med 95% konfidensintervall [13,57 - 63,59]. 
+
+Resultatene fra tabell 1 er fremstilt grafisk i figur 1. Den øverste delen av figuren viser gjennomsnittlig endring, samt konfidensintervall, i de to gruppene ved de tre ulike testtidspunktene. Den nederste delen av figuren viser den gjennomsnittlige forskjellen i gruppene ved mid- og posttest.  
+
+$~$
+$~$
+
+```{r laste inn pakker, include=FALSE}
+
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(emmeans)
+library(pbkrtest)
+library(kableExtra)
+library(cowplot)
+library(lmerTest)
+library(broom)
+library(knitr)
+library(tidyr)
+
+```
+
+
+```{r include=FALSE}
+
+dat <- read_excel("./data/ten_vs_thirty.xlsx", na = "NA") %>%
+  filter(exercise == "legpress",
+         !is.na(load)) %>%
+    # Fix the time factor in the right order for plotting 
+  # and fix the grouping so that the 30RM group comes first (comparing to 30RM)
+  mutate(timepoint = factor(timepoint, levels = c("pre", "mid", "post")), 
+         group = factor(group,  levels = c("RM30", "RM10")))
+
+```
+
+
+```{r include=FALSE}
+
+dat %>%
+
+  ggplot(aes(timepoint, load, group = subject, color = group)) + 
+  geom_line() +
+  geom_boxplot(aes(group = NULL), width = 0.5) +
+  theme_minimal()
+
+```
+
+
+```{r se residualplott, include=FALSE}
+
+m1 <- lmer(load ~ timepoint * group + (1|subject), data = dat)
+
+plot(m1)
+
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+conf_intervals <- confint(m1)
+
+coefs <- summary(m1)$coef
+
+coef_summary <- cbind(coefs, data.frame(conf_intervals)[3:8, ])
+
+coef_summary %>%
+  kable(col.names = c("Estimate", "Std. error", "DF", "T-verdi", "P-verdi", "CI 2,5%", "CI 95%"), 
+        digits = c(1, 2, 0, 2, 4, 2, 2),
+        caption = "**Tabell 1**") %>%
+  kable_classic()
+
+```
+
+
+```{r include=FALSE}
+
+est <- emmeans(m1, specs = ~ timepoint|group)
+
+est %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "mid", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group)) + 
+  
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), 
+                position = position_dodge(width = 0.2), 
+                width = 0.1) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  
+  theme_minimal()
+
+```
+
+
+
+```{r include=FALSE}
+
+coef_summary %>%
+  mutate(coef = rownames(.)) %>%
+  # Filter only the interaction variables
+  filter(coef %in% c("timepointmid:groupRM10", "timepointpost:groupRM10")) %>%
+  # Make a "timepoint" variable to represent the "dat" data set.
+  mutate(timepoint = gsub("timepoint", "", coef), 
+         timepoint = gsub(":groupRM10", "", timepoint)) %>%
+  # Adds a row so that timepoint = "pre" is represented
+  add_row(timepoint = "pre", coef = "pre") %>%
+  # Fix order of the time variable
+  mutate(timepoint = factor(timepoint, levels = c("pre", "mid", "post"))) %>%
+  
+  # Create the plot
+  ggplot(aes(timepoint, Estimate)) + 
+  
+  
+  # Add a line indicating zero geom_hline (horizontal line)
+  geom_hline(yintercept = 0, lty = 2) +
+  
+  geom_errorbar(aes(ymin = X2.5.., ymax = X97.5..), width = 0.1) +
+  geom_point(shape = 24, size = 3, fill = "white") +
+  theme_minimal() +
+  labs(y = "yyyy", 
+       x = "xxxx")
+
+```
+
+$~$
+
+$~$
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.cap="**Figur 1**"}
+
+## Figure 1: Estimated means and raw data
+
+figA <- est %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "mid", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group) ) + 
+  
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), 
+                position = position_dodge(width = 0.2), 
+                width = 0.1) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  theme_minimal() +
+  
+  # Changing axis titles and title in the legend
+  labs(y = "Legpress 1RM load (kg)", 
+       color = "Intensity") + 
+  
+  # Removing text and indicators on the x-axis as these can be represented in the 
+  # other plot
+  theme(axis.text.x = element_blank(), 
+        axis.title.x = element_blank())
+  
+# Figure B: Differences between groups (interaction terms with 95% CI)
+
+figB <- coef_summary %>%
+  mutate(coef = rownames(.)) %>%
+  # Filter only the interaction variables
+  filter(coef %in% c("timepointmid:groupRM10", "timepointpost:groupRM10")) %>%
+  # Make a "timepoint" variable to represent the "dat" data set.
+  mutate(timepoint = gsub("timepoint", "", coef), 
+         timepoint = gsub(":groupRM10", "", timepoint)) %>%
+  # Adds a row so that timepoint = "pre" is represented
+  add_row(timepoint = "pre", coef = "pre") %>%
+  # Fix order of the time variable
+  mutate(timepoint = factor(timepoint, levels = c("pre", "mid", "post"))) %>%
+  
+  # Create the plot
+  ggplot(aes(timepoint, Estimate)) + 
+  
+  
+  # Add a line indicating zero geom_hline (horizontal line)
+  geom_hline(yintercept = 0, lty = 2) +
+  
+  geom_errorbar(aes(ymin = X2.5.., ymax = X97.5..), width = 0.1) +
+  geom_point(shape = 24, size = 3, fill = "white") +
+  theme_minimal() + 
+  
+    # Changing axis titles and title in the legend
+  labs(y = "Average group differences\n(kg, 95% CI)", 
+       color = "Intensity") 
+  
+# Using cowplot to plot both figures in 1
+library(cowplot)
+
+# Plot grid using figA and figB
+plot_grid(figA, figB, ncol = 1, 
+          # Align vertically so that the x axis matches
+          align = "v", 
+          # Set alignment so that axis align both on the left (l) and right (r)
+          # axis
+          axis = "lr")
+
+```
+
+$~$
+
+$~$
+
+### Diskusjon
+
+Formålet med denne studien var å se på effekten av ulik treningsintensitet med formål om å øke muskelstyrke i 1RM i øvelsen beinpress. Studien sammenlignet en treningsgruppe som trente på 30RM med en som trente på 10RM. 
+
+Resultatene viste at 10RM gruppa hadde en signifikant økning sammenlignet med 30RM-gruppa fra pre- til posttest. Dette vises ved at konfidensintervallet for variabelen _timepointpost:groupRM10_ strekker seg fra [13,57 - 63,59], og ikke inneholder 0. 
+
+Forskning viser at for å øke styrke og hypertrofi hos voksne er det anbefalt å trene med 1-3 sett per øvelse, 8-12 repetisjoner med 60-80% av 1RM [@2009]. Dette samsvarer med funnene i vår studie, som viser at trening med 3 sett x 10RM gir større økning i muskelstyrke ved 1RM enn trening med 3 sett x 30RM. En annen studie viser imidlertid at det optimale antallet repetisjoner for å raskest mulig øke styrken er 3-9 [@Berger]. Dette kan vise at et lavt antall repetisjoner er mest gunstig for å øke 1RM. 
+
+$~$
+
+
+## Del 2
+
+### Bakgrunn
+
+Bakgrunnen for del 2 i denne oppgaven er å se hva som er anbefalt treningsvolum for å utvikle styrke. Studien ser på forskjellen mellom å trene med ett sett (single) eller å trene med tre sett (multiple). 
+
+Hypotese: Multiple-gruppa har større økning i muskelstyrke sammenlignet med single-gruppa.  
+
+
+
+### Metode 
+
+
+#### Studiedesign
+
+Denne studien er en randomisert studie utført med to eksperimentelle grupper som undersøkte om effekten av trening med ett eller tre sett øker muskelstyrke. Skriftlig informert samtykke ble innhentet fra alle deltakerne. 
+
+$~$
+
+#### Forsøkspersoner
+
+Forsøkspersonene i denne studien bestod av 34 personer (16 menn og 18 kvinner) i alderen 20-29 år, hvor alle er aktive ballettdansere på Nationaltheateret. Alle deltakerne fullførte hele treningsintervensjonen. Forsøkspersonene ble randomisert i to grupper; den ene gruppa trente 1 sett x 8 repetisjoner maksimum (RM), den andre gruppa trente 3 sett x 8RM.  
+
+$~$
+
+#### Trening og testing
+
+Treningsintervensjonen varte i 6 uker, med pretest i forkant, en test etter første treningsøkt, og en posttest etter endt intervensjon. 
+
+$~$
+
+#### Dataanalyse
+
+De statistiske dataene ble analysert med R og R-studio, og signifikansnivået ble satt til p<0.05. Dataen ble brukt til å lage en mixed model. Mixed model ble brukt på grunn av at studien var randomisert, og denne modellen sammenligner dataen til hver forsøksperson fra sitt utgangspunkt (intercept). Mixed model sammenligner de to gruppene (single og multiple) og estimerer økning av muskelkraft (Nm) over de tre testtidspunktene. Videre ble dataen fra mixed model brukt til å fremstille forskjellene mellom gruppene grafisk.
+
+$~$
+
+### Resultater
+
+Resultatene i tabell 1 viser gjennomsnittlige estimater for de to ulike gruppene ved de tre testtidspunktene. Estimatet for _(Intercept)_ i tabellen representerer det gjennomsnittlige resultatet ved pretest for single-gruppa (215 Nm). Estimatet for _timepointsession1_ viser hvor mye single-gruppa har økt fra pretest til session1 (2,2 Nm), mens _timepointpost_ viser hvor mye gruppa har økt fra pre- til posttest (34,4 Nm). Estimatet for _groupmultiple_ viser forskjellen mellom single-gruppa og multiple-gruppa ved pretest (-3,3 Nm). _timepointsession1;groupmultiple_ viser hvor mye multiple-gruppa har økt i forhold til single-gruppa fra pretest til session1 (3,9 Nm), og _timepointpost:groupmultiple_ viser hvor mye gruppa har økt i forhold til single-gruppa fra pre- til posttest (20 Nm).  
+
+Resultatene fra tabell 1 er fremstilt grafisk i figur 1. Den øverste delen av figuren viser gjennomsnittlig endring, samt konfidensintervall, i de to gruppene ved de tre ulike testtidspunktene. Den nederste delen av figuren viser den gjennomsnittlige forskjellen i gruppene ved session1 og posttest.  
+
+$~$
+$~$
+
+```{r lagre datasettet i en variabel og velge rekkefølge på tidspunkt, message=FALSE, warning=FALSE, include=FALSE}
+
+isom.data <- read_csv("./data/strengthTests.csv") %>% 
+  filter(exercise == "isom") %>%
+  # fix the order of timepoint factor
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1","post")),
+         group = factor(group, levels = c("single", "multiple"))) 
+
+```
+
+
+```{r lage et boksplott for å få oversikt over dataen, message=FALSE, warning=FALSE, include=FALSE}
+
+isom.data %>%
+  # build the plot, each participant (subject) will get a line, group = subject
+  # will take care of this. Each group will get it's own color, color = group
+  # will take care of that.
+  ggplot(aes(timepoint, load, group = subject, color = group)) + 
+  geom_line() +
+  # remove grouping from boxplots to plot group averages
+  geom_boxplot(aes(group = NULL), width = 0.5) +
+  theme_minimal()
+  
+```
+
+
+```{r lage en mixed model og se residualplott, message=FALSE, warning=FALSE, include=FALSE}
+
+lmer3 <- lmer(load ~ timepoint * group + (1|subject), data = isom.data)
+
+summary(lmer3)
+
+plot(lmer3)
+```
+
+
+```{r plotte gjennomsnittet i hver gruppe ved hvert tidspunkt, message=FALSE, warning=FALSE, include=FALSE}
+
+est1 <- emmeans(lmer3, specs = ~ timepoint|group)
+
+est1 %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group)) + 
+  
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), 
+                position = position_dodge(width = 0.2), 
+                width = 0.1) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  
+  theme_minimal()
+
+```
+
+
+```{r lagre konfidensintervallene, message=FALSE, warning=FALSE, echo=FALSE}
+
+conf_intervals2 <- confint(lmer3)
+
+coefs2 <- summary(lmer3)$coef
+
+coef_summary2 <- cbind(coefs2, data.frame(conf_intervals2)[3:8, ])
+
+coef_summary2 %>%
+  kable(col.names = c("Estimate", "Std. error", "DF", "t-verdi", "p-verdi", "CI 2,5%", "CI 97,5%"),
+        digits = c(1, 2, 1, 2, 3, 1, 1),
+        caption = "**Tabell 2**") %>%
+  kable_classic()
+
+```
+
+$~$
+
+$~$
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.cap="**Figur 2**"}
+fig2a <- est1 %>%
+  data.frame() %>%
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+
+  ggplot(aes(timepoint, emmean, group = group, color = group) ) + 
+  
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), 
+                position = position_dodge(width = 0.2), 
+                width = 0.1) +
+  geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(position = position_dodge(width = 0.2)) +
+  theme_minimal() +
+  
+  # Changing axis titles and title in the legend
+  labs(y = "Load", 
+       color = "Gruppe") + 
+  
+  # Removing text and indicators on the x-axis as these can be represented in the 
+  # other plot
+  theme(axis.text.x = element_blank(), 
+        axis.title.x = element_blank())
+  
+# Figure B: Differences between groups (interaction terms with 95% CI)
+
+fig2b <- coef_summary2 %>%
+  mutate(coef = rownames(.)) %>%
+  # Filter only the interaction variables
+  filter(coef %in% c("timepointsession1:groupmultiple", "timepointpost:groupmultiple")) %>%
+  # Make a "timepoint" variable to represent the "dat" data set.
+  mutate(timepoint = gsub("timepoint", "", coef), 
+         timepoint = gsub(":groupmultiple", "", timepoint)) %>%
+  # Adds a row so that timepoint = "pre" is represented
+  add_row(timepoint = "pre", coef = "pre") %>%
+  # Fix order of the time variable
+  mutate(timepoint = factor(timepoint, levels = c("pre", "session1", "post"))) %>%
+  
+  # Create the plot
+  ggplot(aes(timepoint, Estimate)) + 
+  
+  
+  # Add a line indicating zero geom_hline (horizontal line)
+  geom_hline(yintercept = 0, lty = 2) +
+  
+  geom_errorbar(aes(ymin = X2.5.., ymax = X97.5..), width = 0.1) +
+  geom_point(shape = 24, size = 3, fill = "white") +
+  theme_minimal() + 
+  
+    # Changing axis titles and title in the legend
+  labs(y = "Gjennomsnittlig forskjell 
+       (single - multiple)", 
+       color = "Gruppe") 
+  
+# Using cowplot to plot both figures in 1
+library(cowplot)
+
+# Plot grid using figA and figB
+plot_grid(fig2a, fig2b, ncol = 1, 
+          # Align vertically so that the x axis matches
+          align = "v", 
+          # Set alignment so that axis align both on the left (l) and right (r)
+          # axis
+          axis = "lr")
+```
+
+$~$
+$~$
+
+### Diskusjon
+
+Som vi ser ut fra tabell 2 og figur 2, kan resultatene tolkes som at det er en tendens for at det kan være gunstig å trene med flere sett av en øvelse, altså høyere volum. Dette ut i fra at konfidensintervallet hos variabelen som sammenligner de to gruppene ved post-test viser [0.1-	39.8]. Figur 2 viser også at forskjellen mellom gruppene blir gradvis større, og ut fra denne tendensen kan det tenkes at effekten for multiple-gruppen ville blitt enda større ved en lengre intervensjon. I studien til @Ribeiro konkluderte de med at trening med 3 sett over en 12ukers treningsperiode ga signifikant økning i muskelstyrke sammenlignet med trening med kun ett sett. Dette viste også studien til @Bottaro, som så på effekten av trening med ett vs tre sett. Resultatene viste at trening med tre sett ga signifikant økning i muskelkraft i knestrekkerne ved 60graders bøy i kneleddet sammenlignet med trening med ett sett. Dette kan forsterke vår antagelse om at effekten av trening med flere sett ville vært tydeligere ved en lengre intervensjon. 
+
+$~$
+$~$
+
+## Referanser
